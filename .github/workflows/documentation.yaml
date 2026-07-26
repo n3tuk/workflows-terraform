@@ -1,0 +1,97 @@
+---
+# yaml-language-server: $schema=https://www.schemastore.org/github-workflow.json
+
+name: Documentation
+
+on:
+  workflow_call:
+    inputs:
+      configuration:
+        description: >-
+          Provides the name of the Terraform configuration to deploy, which will be used to select the Terraform
+          configuration within the repository to run terraform-docs against, and, if required, update the documentation
+          in the repository.
+        type: string
+        required: true
+
+    secrets:
+      APP_CLIENT_ID:
+        description: >-
+          The GitHub Applications's Client ID to use to generate a `GITHUB_TOKEN` for git to authenticate against GitHub
+          to allow any changes created by terraform-docs to be pushed back to the repository without blocking other
+          GitHub Workflows.
+        required: true
+      APP_PRIVATE_KEY:
+        description: >-
+          The GitHub Application's Private Key to use to generate a `GITHUB_TOKEN` for git to authenticate against
+          GitHub to allow any changes created by terraform-docs to be pushed back to the repository without blocking
+          other GitHub Workflows.
+        required: true
+
+defaults:
+  run:
+    # Error handling and pipefail must be explicitly set via the default shell
+    #   https://github.com/actions/runner/issues/353#issuecomment-1067227665
+    shell: bash --noprofile --norc -eo pipefail {0}
+
+# No permissions by default
+permissions: {}
+
+jobs:
+  documentation:
+    name: Documentation
+    runs-on: ubuntu-latest
+    concurrency:
+      group: ${{ github.repository }}:${{ github.ref }}:documentation:${{ inputs.configuration }}
+      cancel-in-progress: true
+    permissions:
+      contents: write # check out, and make changes to, repositories
+      pull-requests: read # read the Pull Request
+
+    steps:
+      - name: Authenticate to GitHub for Terraform
+        id: token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ secrets.APP_CLIENT_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: read
+          repository: ${{ github.repository }}
+
+      - name: Checkout the repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        # Ensure set the checkout to target the reference for the branch we are testing against so that we can create
+        # commits and push them back to the branch
+        with:
+          token: ${{ steps.token.outputs.token }}
+          ref: ${{ github.event.pull_request.head.ref }}
+          # zizmor: ignore[artipacked] # This action must support git push to commit changes back to the repository.
+          persist-credentials: true
+
+      - name: Run terraform-docs against the configuration
+        uses: terraform-docs/gh-actions@6de6da0cefcc6b4b7a5cbea4d79d97060733093c # v1.4.1
+        with:
+          working-dir: ${{ inputs.configuration }}
+          # This argument needs to point to the location inside the container, not inside the repository, or on the
+          # agent, or the configuration file will not be read correctly, so override here.
+          config-file: /github/workspace/.terraform-docs.yaml
+          # This Action overrides settings used in the configuration file with default versions via command line
+          # arguments, so set the template to empty or the version in .terraform-docs.yaml will not be used.
+          template: ""
+          # Although output-method should be set to empty to allow the .terraform-docs.yaml file to configure it, the
+          # Action script uses this value to decide whether or not to stage the commit to the repository, and therefore
+          # must be set as configured or the git commit and git push commands will fail to send the change back.
+          output-method: inject
+          git-push: true
+          git-commit-message: |-
+            docs: Syncing terraform-docs updates to documentation
+
+            This is an automated commit that synchronises all changes made by
+            terraform-docs to the README.md files in this repository back to the
+            branch to keep the documentation up to date with any changes to the
+            Terraform configuration.
+
+            This commit was generated automatically by the GitHub Actions workflow
+            `n3tuk/workflows-terraform/.github/workflows/documentation.yaml` and
+            should not be modified manually.

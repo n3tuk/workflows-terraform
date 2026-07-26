@@ -19,7 +19,7 @@ permissions: {}
 
 defaults:
   run:
-    # Error handling and pipefile must be explicitly set via the default shell
+    # Error handling and pipefail must be explicitly set via the default shell
     #   https://github.com/actions/runner/issues/353#issuecomment-1067227665
     shell: bash --noprofile --norc -eo pipefail {0}
 

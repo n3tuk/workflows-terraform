@@ -1,0 +1,278 @@
+---
+# yaml-language-server: $schema=https://www.schemastore.org/github-workflow.json
+
+name: Plan
+
+on:
+  workflow_call:
+    inputs:
+      configuration:
+        description: >-
+          The path to the Terraform configuration to be deployed inside the calling repository.
+        type: string
+        required: true
+      environment:
+        description: >-
+          The name of the environment to deploy the Terraform configuration to.
+        type: string
+        required: true
+
+      gcp-project-id:
+        description: >-
+          The GCP Project ID to use both for authenticating to GCP for Terraform, and as the default Project to deploy
+          to for any Terraform resources (or to query from for data sources). This is only required if there is a Google
+          provider configured in the Terraform configuration.
+        type: string
+        required: false
+        default: ""
+      gcp-workload-identity-provider:
+        description: >-
+          The GCP Workload Identity Provider to use for authenticating to GCP for Terraform. This is only required if
+          there is a Google provider configured in the Terraform configuration.
+        type: string
+        required: false
+        default: ""
+      gcp-service-account-email:
+        description: >-
+          The email address for the GCP Service Account to impersonate when authenticating to GCP for Terraform
+          (although any GCP Service Account specified by the `impersonate_service_account` block in any of the GCP
+          Terraform provider block will override this value, assuming this Service Account has permissions to
+          impersonate the configured `impersonate_service_account`). This is only required if there is a Google provider
+          configured in the Terraform configuration.
+        type: string
+        required: false
+        default: ""
+
+      aws-region:
+        description: >-
+          The AWS region to use both for authentication to IAM, and as the default AWS Region to deploy to for any
+          Terraform resources (or to query from for data sources). This is only required if there is an AWS provider
+          configured in the Terraform configuration.
+        type: string
+        required: false
+        default: eu-west-2
+      aws-iam-role-arn:
+        description: >-
+          The ARN of the AWS IAM Role to assume for Terraform for authenticating to AWS (although any AWS IAM Role
+          specified by the `assume_role` block in any of the AWS Terraform providers will override this value, assuming
+          this IAM role has permissions to assume the configured `assume_role`). This is only required if there is an
+          AWS provider configured in the Terraform configuration.
+        type: string
+        required: false
+        default: ""
+
+      tailscale-tags:
+        description: >-
+          The tags to use when connecting this ephermal GitHub Actions runner to the Tailscale network for access to
+          private resources.
+        type: string
+        required: false
+        default: tag:github-workflow
+
+      vault-url:
+        description: >-
+          The URL of the Vault or OpenBao instance which should be connected to by Terraform for retrieving secrets for
+          the configuration. This is only required if there is a Vault provider in the Terraform configuration.
+        type: string
+        required: false
+        default: ""
+      vault-role:
+        description: >-
+          The Vault or OpenBao Role to use for authenticating to Vault or OpenBao with Terraform. This is only required
+          if there is a Vault provider in the Terraform configuration.
+        type: string
+        required: false
+        default: ""
+
+      authentik-url:
+        description: >-
+          The URL of the Authentik instance which should be connected to by Terraform for managing resources in the
+          configuration. This is only required if there is an Authentik provider in the Terraform configuration.
+        type: string
+        required: false
+        default: ""
+
+      ca-certificates:
+        description: >-
+          The n3t.uk Root Certificate Authority Certificate(s) to use for authenticating to Vault or OpenBao with
+          Terraform. This is only required when `vault-enable` is set to `true`.
+        type: string
+        required: false
+        default: ""
+
+    secrets:
+      TS_OAUTH_CLIENT_ID:
+        description: >-
+          The Tailscale OAuth Client ID to use for authenticating to Tailscale with the GitHub Actions runner to allow
+          access to private resources in the network.
+        required: false
+      TS_AUDIENCE:
+        description: >-
+          The Tailscale Audience to use for authenticating to Tailscale with the GitHub Actions runner to allow access
+          to private resources in the network.
+        required: false
+
+      AUTHENTIK_TOKEN:
+        description: >-
+          The Authentik API Token to use for authenticating to Authentik for the GitHub Actions runner to allow access
+          to the service for managing resources. This is only required if there is an Authentik provider configured in
+          the Terraform configuration.
+        required: false
+
+      APP_ID:
+        description: >-
+          The GitHub Application ID to use for Terraform to authenticate against GitHub using GitHub Application
+          credentials for access to the GitHub Organization for management. This is only required if there is a GitHub
+          provider configured in the Terraform configuration.
+        required: false
+      APP_INSTALLATION_ID:
+        description: >-
+          The GitHub Application Installation ID to use for Terraform to authenticate against GitHub using GitHub
+          Application credentials for access to the GitHub Organization for management. This is only required if there
+          is a GitHub provider configured in the Terraform configuration.
+        required: false
+      APP_PEM_FILE:
+        description: >-
+          The GitHub Application Private Key contents (in PEM format) to use for Terraform to authenticate against
+          GitHub using GitHub Application credentials for access to the GitHub Organization for management. This is only
+          required if there is a GitHub provider configured in the Terraform configuration.
+        required: false
+
+defaults:
+  run:
+    # Error handling and pipefail must be explicitly set via the default shell
+    #   https://github.com/actions/runner/issues/353#issuecomment-1067227665
+    shell: bash --noprofile --norc -eo pipefail {0}
+
+# No permissions by default
+permissions: {}
+
+jobs:
+  plan:
+    name: Plan
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ inputs.environment }}
+      deployment: false
+    concurrency:
+      group: ${{ github.repository }}:terraform:${{ inputs.configuration }}:${{ inputs.environment }}
+      # Do not cancel or we risk leaving the Terraform state locked
+      cancel-in-progress: false
+    permissions:
+      contents: read # check out repositories
+      id-token: write # request GitHub OIDC tokens to submit to multiple providers
+      issues: write # submit or change comment on a Pull Request
+      pull-requests: write # make changes to the Pull Request
+
+    steps:
+      - name: Checkout the repository
+        id: checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Cache the Terraform providers
+        id: cache-providers
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ~/.terraform.d/plugin-cache
+          key: terraform-${{ runner.os }}-${{ hashFiles(format('{0}/{1}', inputs.configuration, 'terraform.tf')) }}
+
+      - name: Connect to the Tailscale network
+        id: tailscale
+        if: env.TS_OAUTH_CLIENT_ID != '' && env.TS_AUDIENCE != ''
+        uses: tailscale/github-action@780049a30b6ff5c378a9e7b389d15ece7a204888 # v4.1.3
+        env:
+          TS_OAUTH_CLIENT_ID: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          TS_AUDIENCE: ${{ secrets.TS_AUDIENCE }}
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          audience: ${{ secrets.TS_AUDIENCE }}
+          tags: ${{ inputs.tailscale-tags }}
+          ping: external-01,external-02
+
+      - name: Authenticate with GCP
+        id: gcp
+        if: |-
+          inputs.gcp-project-id != '' &&
+          inputs.gcp-workload-identity-provider != '' &&
+          inputs.gcp-service-account-email != ''
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          project_id: ${{ inputs.gcp-project-id }}
+          workload_identity_provider: ${{ inputs.gcp-workload-identity-provider }}
+          service_account: ${{ inputs.gcp-service-account-email }}
+
+      - name: Authenticate with AWS
+        id: aws
+        if: inputs.aws-region != '' && inputs.aws-iam-role-arn != ''
+        uses: aws-actions/configure-aws-credentials@ec61189d14ec14c8efccab744f656cffd0e33f37 # v6.1.0
+        with:
+          aws-region: ${{ inputs.aws-region }}
+          role-to-assume: ${{ inputs.aws-iam-role-arn }}
+          role-session-name: plan@${{ inputs.configuration }}
+
+      - name: Save Certificate Authorities for Vault
+        id: ca
+        if: inputs.vault-url != '' && inputs.vault-role != ''
+        env:
+          GITHUB_WORKSPACE: ${{ github.workspace }}
+          VAULT_CACERT: ${{ inputs.ca-certificates }}
+        run: |-
+          # echo ... | base64 --decode > /tmp/vault-ca.pem
+
+          CA_FILE=$(mktemp "${GITHUB_WORKSPACE}/.vault-ca-XXXXXXXXXX.pem")
+          echo "${VAULT_CACERT}" | base64 --decode > "${CA_FILE}"
+          echo "file=${CA_FILE}" >> "${GITHUB_OUTPUT}"
+          echo "Vault Certificate Authorities file created at ${CA_FILE}"
+
+      - name: Authenticate with Vault
+        id: vault
+        if: inputs.vault-url != '' && inputs.vault-role != ''
+        uses: hashicorp/vault-action@892a26828f195e65540a40b4768ae4571f51ebfc # v4.0.0
+        with:
+          url: ${{ inputs.vault-url }}
+          path: github-actions
+          caCertificate: ${{ inputs.ca-certificates }}
+          method: jwt
+          role: ${{ inputs.vault-role }}
+          # We do not need this GitHub Action to do anything with the Vault instance, we just need it to authenticate
+          # and provide the Vault token to Terraform. Therefore, we set it to export the Vault token only.
+          exportToken: true
+
+      - name: Force DNS to the Tailscale network
+        if: env.TS_OAUTH_CLIENT_ID != '' && env.TS_AUDIENCE != ''
+        env:
+          TS_OAUTH_CLIENT_ID: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          TS_AUDIENCE: ${{ secrets.TS_AUDIENCE }}
+        run: |-
+          # resolvectl default-route eth0 no
+          sudo resolvectl default-route eth0 no
+
+      - name: Plan the Terraform configuration
+        id: plan
+        uses: n3tuk/action-terraform@7113060d7cd2dab5332f56e8687c45065e7075de # v0.1.0
+        env:
+          GITHUB_APP_ID: ${{ secrets.APP_ID }}
+          GITHUB_APP_INSTALLATION_ID: ${{ secrets.APP_INSTALLATION_ID }}
+          GITHUB_APP_PEM_FILE: ${{ secrets.APP_PEM_FILE }}
+          VAULT_ADDR: ${{ inputs.vault-url }}
+          VAULT_CACERT: ${{ steps.ca.outputs.file }}
+          AUTHENTIK_URL: ${{ inputs.authentik-url }}
+          AUTHENTIK_TOKEN: ${{ secrets.AUTHENTIK_TOKEN }}
+          TF_BACKEND: "true"
+        with:
+          action: plan
+          configuration: ${{ inputs.configuration }}
+
+      - name: Restore DNS to the GitHub network
+        if: always() && env.TS_OAUTH_CLIENT_ID != '' && env.TS_AUDIENCE != ''
+        env:
+          TS_OAUTH_CLIENT_ID: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          TS_AUDIENCE: ${{ secrets.TS_AUDIENCE }}
+        run: |-
+          # resolvectl default-route eth0 yes
+          sudo resolvectl default-route eth0 yes
+
+      # TODO: Upload the Terraform execution plan file (i.e. terraform.tfplan) for the `apply` workflow so it can be
+      #       used to apply the changes, rather than re-running the plan again.
