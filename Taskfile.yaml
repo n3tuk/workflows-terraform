@@ -104,6 +104,7 @@ tasks:
       - defer: "{{ if .EXIT_CODE }}echo -e '\e[1;31mFailed\e[0m'{{ end }}"
       - task: yamllint
       - task: markdownlint
+      - task: check-jsonschema
       - cmd: echo -e '\e[0;32mCompleted\e[0m'
 
   analyse:
