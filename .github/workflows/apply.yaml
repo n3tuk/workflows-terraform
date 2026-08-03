@@ -148,8 +148,8 @@ defaults:
 permissions: {}
 
 jobs:
-  plan:
-    name: Plan
+  apply:
+    name: Apply
     runs-on: ubuntu-latest
     environment:
       name: ${{ inputs.environment }}
