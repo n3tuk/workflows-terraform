@@ -1,6 +1,7 @@
 ---
 # yamllint disable-line rule:line-length
 # yaml-language-server: $schema=https://www.schemastore.org/pre-commit-config.json
+
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks.git
     rev: v6.0.0
@@ -22,10 +23,10 @@ repos:
       - id: end-of-file-fixer
         name: Check all files end in a new-line only
 
-  - repo: https://github.com/zricethezav/gitleaks.git
-    rev: v8.30.1
+  - repo: https://github.com/gitguardian/ggshield
+    rev: v1.52.2
     hooks:
-      - id: gitleaks
+      - id: ggshield
         name: Check for hard-coded secrets, keys, and credentials
 
   # Formatting
@@ -81,15 +82,9 @@ repos:
     hooks:
       - name: Lint all GitHub Workflows with actionlint
         id: actionlint-system
-        args:
-          - -config-file
-          - .actionlint.yaml
 
   - repo: https://github.com/zizmorcore/zizmor-pre-commit.git
     rev: v1.28.0
     hooks:
       - name: Check GitHub Workflows for security issues with zizmor
         id: zizmor
-        args:
-          - --config
-          - .zizmor.yaml

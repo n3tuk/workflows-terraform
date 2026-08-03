@@ -1,0 +1,72 @@
+---
+# yaml-language-server: $schema=https://www.schemastore.org/github-workflow.json
+
+name: Validate
+
+on:
+  workflow_call:
+    inputs:
+      configuration:
+        description: >-
+          The path to the Terraform configuration to be deployed inside the calling repository.
+        type: string
+        required: true
+
+      module:
+        description: >-
+          Set to `true` when the target configuration path is a Terraform module. Module validation skips the
+          initilisation and validation of the module itself, and instead initialises and validates each of the Terraform
+          example configurations found beneath `examples/` directory.
+        type: boolean
+        required: false
+        default: false
+
+defaults:
+  run:
+    # Error handling and pipefail must be explicitly set via the default shell
+    #   https://github.com/actions/runner/issues/353#issuecomment-1067227665
+    shell: bash --noprofile --norc -eo pipefail {0}
+
+# No permissions by default
+permissions: {}
+
+jobs:
+  validate:
+    name: Validate
+    runs-on: ubuntu-latest
+    concurrency:
+      group: ${{ github.repository }}:terraform:${{ inputs.configuration }}:validate:${{ github.sha }}
+      cancel-in-progress: true
+    permissions:
+      contents: read # check out repositories
+      issues: write # submit or change comment on a Pull Request
+      pull-requests: write # make changes to the Pull Request
+
+    steps:
+      - name: Checkout the repository
+        id: checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Cache the Terraform providers
+        id: cache-providers
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ~/.terraform.d/plugin-cache
+          key: >-
+            terraform-${{ runner.os }}-${{ hashFiles(format('{0}/{1}', inputs.configuration, 'terraform.tf')) }}
+
+      - name: Validate the Terraform configuration
+        id: validate
+        uses: n3tuk/action-terraform@7113060d7cd2dab5332f56e8687c45065e7075de # v0.1.0
+        env:
+          # The Authentik provider runs checks against the environment to verify that it has a token and URL configured
+          # during the validation step, even through it doesn't actually use these credentials. Therefore set them to
+          # dummy values to avoid the provider failing and so we don't have to expose  secrets in this step.
+          AUTHENTIK_URL: https://auth.example.com
+          AUTHENTIK_TOKEN: this-is-not-a-valid-token
+        with:
+          action: validate
+          configuration: ${{ inputs.configuration }}
+          module: ${{ inputs.module }}
