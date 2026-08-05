@@ -60,14 +60,17 @@ categories:
     exclusive: true
   - title: Features & Updates
     type: changelog
-    semver-increment: minor
     when:
       labels:
         - release/feature
         - release/update
     exclusive: true
-  # Override the version resolver for the release/update label to treat it as a patch. As this is specifically a
-  # version-resolver type change, the exclusive setting above will not override this change.
+  - type: version-resolver
+    semver-increment: minor
+    when:
+      labels:
+        - release/feature
+    exclusive: true
   - type: version-resolver
     semver-increment: patch
     when:
@@ -126,5 +129,5 @@ replacers:
     replace: '[`$1-$2`](https://jira.mot-solutions.com/browse/$1-$2)'
   - search: '/CVE-(\d{4})-(\d+)/g'
     replace: '[CVE-$1-$2](https://github.com/advisories?query=CVE-$1-$2)'
-  - search: '/GHSA-([a-z0-9]{4}-([a-z0-9]{4})-([a-z0-9]{4})/g'
+  - search: '/GHSA-([a-z0-9]{4})-([a-z0-9]{4})-([a-z0-9]{4})/g'
     replace: '[GHSA-$1-$2](https://github.com/advisories?query=GHSA-$1-$2-$3)'
