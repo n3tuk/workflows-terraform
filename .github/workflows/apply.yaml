@@ -220,18 +220,19 @@ jobs:
 
           echo "::group::Decrypt terraform.tfplan.tgz.gpg"
           PASS=$(mktemp "${GITHUB_WORKSPACE}/.tfplan-passphrase-XXXXXXXXXX")
-          trap 'shred --force --remove --zero "${PASS}" || true' EXIT INT TERM HUP
+          trap 'test -f "${PASS}" && shred --force --remove --zero "${PASS}" || true' EXIT INT TERM HUP
           echo -n "${TF_PLAN_PASSPHRASE}" > "${PASS}"
 
           gpg  --pinentry-mode loopback --batch --decrypt --passphrase-file "${PASS}" \
             --yes --output 'terraform.tfplan.tgz' 'terraform.tfplan.tgz.gpg'
-          # shred will fail if the file is not present
+          # Only shred when the file is present (avoid log noise when missing), ignoring errors
           shred --force --remove --zero "${PASS}" || true
           echo "::endgroup::"
 
           echo "::group::Extract terraform.tfplan.tgz"
           tar --extract --gzip --verbose --file 'terraform.tfplan.tgz'
-          shred --force --remove --zero 'terraform.tfplan.tgz.gpg' 'terraform.tfplan.tgz' || true
+          test -f 'terraform.tfplan.tgz.gpg' && shred --force --remove --zero 'terraform.tfplan.tgz.gpg' || true
+          test -f 'terraform.tfplan.tgz' && shred --force --remove --zero 'terraform.tfplan.tgz' || true
           echo "::endgroup::"
 
       - name: Connect to the Tailscale network
@@ -337,6 +338,7 @@ jobs:
         run: |-
           # shred .../terraform.tfplan .../.terraform/terraform.tfstate
 
-          # shred will fail if the file is not present
-          shred --force --remove --zero "${TF_CONFIGURATION}/terraform.tfplan" || true
-          shred --force --remove --zero "${TF_CONFIGURATION}/.terraform/terraform.tfstate" || true
+          test -f "${TF_CONFIGURATION}/terraform.tfplan" \
+            && shred --force --remove --zero "${TF_CONFIGURATION}/terraform.tfplan" || true
+          test -f "${TF_CONFIGURATION}/.terraform/terraform.tfstate" \
+            && shred --force --remove --zero "${TF_CONFIGURATION}/.terraform/terraform.tfstate" || true
