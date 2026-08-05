@@ -324,15 +324,17 @@ jobs:
             .task/checksum/*
           echo "::endgroup::"
 
-          echo "::group::Create terraform.tfplan.tgz"
-          # shred will fail if the file is not present
-          shred --remove --zero "${TF_CONFIGURATION}/terraform.tfplan" || true
-          shred --remove --zero "${TF_CONFIGURATION}/.terraform/terraform.tfstate" || true
+          echo "::group::Clean up the execution plan and state files"
+          # Only shred when the file is present (avoid log noise when missing), ignoring errors
+          test -f "${TF_CONFIGURATION}/terraform.tfplan" \
+            && shred --force --remove --zero "${TF_CONFIGURATION}/terraform.tfplan" || true
+          test -f "${TF_CONFIGURATION}/.terraform/terraform.tfstate" \
+            && shred --force --remove --zero "${TF_CONFIGURATION}/.terraform/terraform.tfstate" || true
           echo "::endgroup::"
 
           echo "::group::Encrypt terraform.tfplan.tgz"
           PASS=$(mktemp "${GITHUB_WORKSPACE}/.tfplan-passphrase-XXXXXXXXXX")
-          trap 'shred --force --remove --zero "${PASS}" || true' EXIT INT TERM HUP
+          trap 'test -f "${PASS}" && shred --force --remove --zero "${PASS}" || true' EXIT INT TERM HUP
           echo -n "${TF_PLAN_PASSPHRASE}" > "${PASS}"
 
           gpg --pinentry-mode loopback --batch --symmetric --cipher-algo AES256 --passphrase-file "${PASS}" \
