@@ -314,18 +314,29 @@ jobs:
           fi
 
           echo "::group::Create terraform.tfplan.tgz"
-          tar --create --gzip --verbose --file 'terraform.tfplan.tgz' \
-            "${TF_CONFIGURATION}/terraform.tfplan" "${TF_CONFIGURATION}/.terraform" .task/checksum/*
-          shred --force --remove --zero "${TF_CONFIGURATION}/terraform.tfplan"
+          tar --create --gzip --verbose --ignore-failed-read \
+            --file 'terraform.tfplan.tgz' \
+            "${TF_CONFIGURATION}/terraform.tfplan" \
+            "${TF_CONFIGURATION}/.terraform/backend" \
+            "${TF_CONFIGURATION}/.terraform/environment" \
+            "${TF_CONFIGURATION}/.terraform/terraform.tfstate" \
+            "${TF_CONFIGURATION}/.terraform/providers" \
+            .task/checksum/*
+          # shred will fail if the file is not present
+          test -f "${TF_CONFIGURATION}/terraform.tfplan" \
+            && shred --force --remove --zero "${TF_CONFIGURATION}/terraform.tfplan"
+          test -f "${TF_CONFIGURATION}/.terraform/terraform.tfstate" \
+            && shred --force --remove --zero "${TF_CONFIGURATION}/.terraform/terraform.tfstate"
           echo "::endgroup::"
 
           echo "::group::Encrypt terraform.tfplan.tgz"
           PASS=$(mktemp "${GITHUB_WORKSPACE}/.tfplan-passphrase-XXXXXXXXXX")
+          trap 'test -f "${PASS}" && shred --force --remove --zero "${PASS}"' EXIT INT TERM HUP
           echo -n "${TF_PLAN_PASSPHRASE}" > "${PASS}"
 
           gpg --pinentry-mode loopback --batch --symmetric --cipher-algo AES256 --passphrase-file "${PASS}" \
             --yes --output 'terraform.tfplan.tgz.gpg' 'terraform.tfplan.tgz'
-          shred --force --remove --zero "${PASS}"
+          test -f "${PASS}" && shred --force --remove --zero "${PASS}"
           echo "::endgroup::"
 
       - name: Upload the Terraform execution plan
