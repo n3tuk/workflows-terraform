@@ -71,10 +71,12 @@ repos:
     hooks:
       - name: Check the Taskfiles for correctness
         id: check-taskfile
-      - name: Check Dependabot configuration for correctness
-        id: check-dependabot
+      - name: Check the Renovate configuration for correctness
+        id: check-renovate
       - name: Check GitHub Workflows for correctness
         id: check-github-workflows
+      - name: Check the Mergify configuration for correctness
+        id: check-mergify
 
   # Static Analysis
   - repo: https://github.com/rhysd/actionlint.git
