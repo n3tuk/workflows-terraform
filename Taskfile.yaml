@@ -76,6 +76,7 @@ tasks:
       - defer: "{{ if .EXIT_CODE }}echo -e '\e[1;31mFailed\e[0m'{{ end }}"
       - task: lint
       - task: formatting
+      - task: validate
       - task: analyse
       - cmd: echo -e '\e[0;32mCompleted\e[0m'
 
@@ -97,22 +98,30 @@ tasks:
       - l
     desc: Lint selected files within this repository
     summary: |-
-      Run linting checks across all Terraform, YAML, and Markdown files to find any potential issues or inconsistencies
-      within the code.
+      Run linting checks across YAML and Markdown files to find any potential issues or inconsistencies within the code.
     silent: true
     cmds:
       - defer: "{{ if .EXIT_CODE }}echo -e '\e[1;31mFailed\e[0m'{{ end }}"
       - task: yamllint
       - task: markdownlint
+      - cmd: echo -e '\e[0;32mCompleted\e[0m'
+
+  validate:
+    desc: Validate selected files within this repository
+    summary: |-
+      Run validation checks on selected YAML files, including GitHub Workflows, GitHub Actions, Renovate, Mergify,
+      Taskfiles, and the pre-commit configuration.
+    silent: true
+    cmds:
+      - defer: "{{ if .EXIT_CODE }}echo -e '\e[1;31mFailed\e[0m'{{ end }}"
       - task: check-jsonschema
       - cmd: echo -e '\e[0;32mCompleted\e[0m'
 
   analyse:
     desc: Run static analysis checks for this repository
     summary: |-
-      Run static code analysis tools (i.e Snyk) against these GitHub Workflows, as well zizmor and actionlint against
-      the GitHub Dependabot configuration, and all GitHub Workflow files, to identify any potential security issues and
-      misconfigurations within the code.
+      Run static code analysis tools (i.e Snyk) against these GitHub Workflows, as well as zizmor and actionlint against
+      all GitHub Workflow files to identify any potential security issues and misconfigurations within the code.
     silent: true
     cmds:
       - defer: "{{ if .EXIT_CODE }}echo -e '\e[1;31mFailed\e[0m'{{ end }}"
